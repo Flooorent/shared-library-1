@@ -1,0 +1,59 @@
+# Azure Databricks Build Pipeline
+# azure-pipelines.yml
+
+trigger:
+  branches:
+    include:
+    - '*'
+  tags:
+    include:
+    - '*'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+- job: Unit_Tests
+  steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.7'
+    inputs:
+      versionSpec: 3.7
+
+  - checkout: self
+    persistCredentials: true
+    clean: true
+
+  - script: pip install -r requirements.txt
+    displayName: 'Install python dependencies'
+
+  - script: pytest
+    displayName: 'Run Python Unit Tests for library code'
+
+# run build phase only on tags
+- job: Build
+  dependsOn: Unit_Tests
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+  steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.7'
+    inputs:
+      versionSpec: 3.7
+
+  - checkout: self
+    persistCredentials: true
+    clean: true
+
+  - script: pip install setuptools wheel twine
+    displayName: 'Install python dependencies to package project'
+
+  - script: python setup.py sdist bdist_wheel
+    displayName: 'Build Python Wheel'
+
+  - task: TwineAuthenticate@1
+    inputs:
+      artifactFeed: 'Templates/shared-library-1'
+    displayName: 'Authenticate Twine'
+
+  - script: twine upload -r shared-library-1 dist/* --config-file $(PYPIRC_PATH)
+    displayName: 'Publish module to Azure Artifact'
